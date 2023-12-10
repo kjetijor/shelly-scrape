@@ -73,10 +73,13 @@ class PlugApparentEnergy:
     minute_ts: int
 
 
+# pylint: disable=too-many-instance-attributes
+# device shape/schema trumps pylint
 @dataclass
 class PlugMetrics:
     """Shelly plug metrics"""
-    id: int
+    id: int     # pylint: disable=invalid-name
+                # device shape/schema trumps pylint
     source: str
     output: bool
     apower: float
@@ -87,22 +90,22 @@ class PlugMetrics:
     temperature_f: float
 
 
-def plug_metrics_from_dict(d: dict) -> PlugMetrics:
+def plug_metrics_from_dict(mdict: dict) -> PlugMetrics:
     """Construct PlugMetrics from dict"""
     return PlugMetrics(
-        id=d["id"],
-        source=d["source"],
-        output=d["output"],
-        apower=d["apower"],
-        voltage=d["voltage"],
-        current=d["current"],
+        id=mdict["id"],
+        source=mdict["source"],
+        output=mdict["output"],
+        apower=mdict["apower"],
+        voltage=mdict["voltage"],
+        current=mdict["current"],
         aenergy=PlugApparentEnergy(
-            total=d["aenergy"]["total"],
-            by_minute=d["aenergy"]["by_minute"],
-            minute_ts=d["aenergy"]["minute_ts"]
+            total=mdict["aenergy"]["total"],
+            by_minute=mdict["aenergy"]["by_minute"],
+            minute_ts=mdict["aenergy"]["minute_ts"]
         ),
-        temperature_c=d["temperature"]["tC"],
-        temperature_f=d["temperature"]["tF"]
+        temperature_c=mdict["temperature"]["tC"],
+        temperature_f=mdict["temperature"]["tF"]
     )
 
 
@@ -115,6 +118,7 @@ def scrape(host: str) -> PlugMetrics:
     return plug_metrics_from_dict(data)
 
 
+# pylint: disable=too-many-locals
 def create_metrics(
         commonlabels: Mapping[str, str],
         measurements: Mapping[str, Tuple[PlugConfig, PlugMetrics]]
@@ -143,8 +147,8 @@ def create_metrics(
         voltage.labels(*plugvalues).set(plugmetrics.voltage)
         current.labels(*plugvalues).set(plugmetrics.current)
         totenergy.labels(*plugvalues).set(plugmetrics.aenergy.total)
-        for (i, bucket) in enumerate(plugmetrics.aenergy.by_minute):
-            aenergy.labels(*plugvalues, f"minute_{i}").set(bucket)
+        for (index, bucket) in enumerate(plugmetrics.aenergy.by_minute):
+            aenergy.labels(*plugvalues, f"minute_{index}").set(bucket)
         temperature.labels(*plugvalues, "c").set(plugmetrics.temperature_c)
         temperature.labels(*plugvalues, "f").set(plugmetrics.temperature_f)
     return reg
@@ -177,8 +181,8 @@ class DoneHandler:
 def gen_cleanup(dirname: Path, name: str):
     """generate cleanup function"""
     def cleanup():
-        for f in dirname.glob(f".{name}.*.tmp"):
-            f.unlink()
+        for file_name in dirname.glob(f".{name}.*.tmp"):
+            file_name.unlink()
         (dirname / name).unlink(missing_ok=True)
     return cleanup
 
