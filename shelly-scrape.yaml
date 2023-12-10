@@ -1,0 +1,7 @@
+plugs:
+  shellyplugus-blah:
+    location: living-room
+    device: tv
+  shellyplugus-waffles:
+    location: patio
+    device: christmas-lights
