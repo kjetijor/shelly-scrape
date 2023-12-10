@@ -7,7 +7,7 @@ from collections import namedtuple
 from dataclasses import dataclass
 from typing import Mapping, List, Tuple
 from pathlib import Path
-from time import sleep
+from threading import Event
 
 import os
 import signal
@@ -168,14 +168,18 @@ class DoneHandler:
     """wrapping shenanigans for signal handlers"""
 
     def __init__(self):
-        self._done = False
+        self._done = Event()
 
     def __call__(self, _signum, _frame):
-        self._done = True
+        self._done.set()
 
     def done(self) -> bool:
         """return done status"""
-        return self._done
+        return self._done.is_set()
+
+    def wait(self, timeout=None) -> bool:
+        """wait for done status"""
+        return self._done.wait(timeout)
 
 
 def gen_cleanup(dirname: Path, name: str):
@@ -256,5 +260,5 @@ if __name__ == "__main__":
         if args.once:
             print("Exiting because once", file=sys.stderr)
             sys.exit(1)
-        sleep(args.interval)
+        donehandler.wait(args.interval)
     print("Shutting down", file=sys.stderr)
