@@ -170,7 +170,7 @@ class DoneHandler:
     def __init__(self):
         self._done = Event()
 
-    def __call__(self, _signum, _frame):
+    def __call__(self, *_):
         self._done.set()
 
     def done(self) -> bool:
