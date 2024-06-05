@@ -3,15 +3,17 @@
 
 from atexit import register as register_atexit
 from argparse import ArgumentParser
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from dataclasses import dataclass
-from typing import Mapping, List, Tuple
+from typing import Mapping, Dict, List, Tuple, Optional
 from pathlib import Path
 from threading import Event
 
 import os
 import signal
 import sys
+import time
+import re
 import yaml
 
 from prometheus_client import CollectorRegistry, Gauge, write_to_textfile
@@ -37,6 +39,42 @@ class ShellyscrapeConfig:
 
 OUTDIR = Path("/var/lib/prometheus/node-exporter")
 
+class MsgSponge:
+    """Message sponge, repeats after repeat and prunes after prune"""
+    def __init__(self, repeat=100000, prune: float=3600*24):
+        self._filters = [re.compile(r"object at 0x[0-9a-f]+")]
+        self._msgs: Dict[int, int] = defaultdict(lambda: -1)
+        self._prune: Dict[int, float] = {}
+        self._prune_interval = prune
+        self._repeat = repeat
+    def sponge(self, sponge_msg: str, when: float=time.time()) -> Optional[str]:
+        """sponge sponge_msg returning None if message deemed sponged"""
+        key_msg = sponge_msg
+        for f in self._filters:
+            key_msg = f.sub("*REPLACED*", key_msg, 0)
+        key = hash(key_msg)
+        self._msgs[key] += 1
+        self._prune[key] = when + self._prune_interval
+        count = self._msgs[key]
+        if count % self._repeat == 0:
+            prefix = ""
+            if count > 0:
+                prefix = f"repeated={count} "
+            return prefix + sponge_msg
+        return None
+    def purge(self, when=time.time()):
+        """Purge message sponge"""
+        purgekeys = [
+            key
+            for (key, value)
+            in self._prune.items()
+            if value < when
+        ]
+        for key in purgekeys:
+            del self._msgs[key]
+            del self._prune[key]
+    def __str__(self):
+        return f"MessageSponge(entries={len(self._msgs)})"
 
 def shelly_scrape_config(path: Path) -> ShellyscrapeConfig:
     """Load plug config from path"""
@@ -238,6 +276,7 @@ if __name__ == "__main__":
     if len(targets.keys()) == 0:
         print("No plugs given", file=sys.stderr)
         sys.exit(1)
+    sponge = MsgSponge()
     donehandler = DoneHandler()
     signal.signal(signal.SIGTERM, donehandler)
     signal.signal(signal.SIGINT, donehandler)
@@ -252,13 +291,15 @@ if __name__ == "__main__":
                 m = scrape(plug)
                 metrics[plug] = (cfg, m)
             except requests.exceptions.ConnectionError as conerr:
-                print(
-                    f"Failed to scprape {plug}, failed to connect with {conerr}",
-                    file=sys.stderr)
+                msg = f"Failed to scprape {plug}, failed to connect with {conerr}"
+                sponged = sponge.sponge(msg)
+                if sponged is not None:
+                    print(sponged,file=sys.stderr)
         registry = create_metrics(scrapecfg.commonlabels, metrics)
         write_metrics(args.outdir, registry, args.filename)
         if args.once:
             print("Exiting because once", file=sys.stderr)
             sys.exit(1)
+        sponge.purge()
         donehandler.wait(args.interval)
     print("Shutting down", file=sys.stderr)
